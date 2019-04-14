@@ -1,0 +1,4 @@
+*.swp
+/*.conf
+/run.sh
+vendor/
