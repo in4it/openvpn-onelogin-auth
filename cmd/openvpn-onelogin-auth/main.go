@@ -12,7 +12,12 @@ import (
 )
 
 func readConfig() onelogin.Config {
-	var configfile = "onelogin.conf"
+	var configfile string
+	if os.Getenv("CONFIGFILE") == "" {
+		configfile = "/etc/openvpn/onelogin.conf"
+	} else {
+		configfile = os.Getenv("CONFIGFILE")
+	}
 	_, err := os.Stat(configfile)
 	if err != nil {
 		log.Fatal("Config file is missing: ", configfile)
