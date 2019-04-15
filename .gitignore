@@ -2,3 +2,4 @@
 /*.conf
 /run.sh
 vendor/
+openvpn-onelogin-auth-*

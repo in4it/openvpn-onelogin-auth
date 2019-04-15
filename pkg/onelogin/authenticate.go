@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/juju/loggo"
 )
+
+var logger = loggo.GetLogger("onelogin.authenticate")
 
 type VerifyFactorParams struct {
 	DeviceID    string `json:"device_id"`
 	StateToken  string `json:"state_token"`
-	OptToken    string `json:"opt_token,omitempty"`
+	OptToken    string `json:"otp_token,omitempty"`
 	DoNotNotify bool   `json:"do_not_notify,omitempty"`
 }
 
@@ -119,6 +123,7 @@ func (o *onelogin) CreateSessionLoginTokenWithMFA(token string, params SessionLo
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+
 	if err != nil {
 		return sessionResponse, err
 	}
@@ -126,8 +131,6 @@ func (o *onelogin) CreateSessionLoginTokenWithMFA(token string, params SessionLo
 	if resp.StatusCode == 400 {
 		return sessionResponse, fmt.Errorf("Statuscode 400 (bad request)")
 	}
-
-	fmt.Printf("body: %s\n", string(body))
 
 	err = json.Unmarshal(body, &sessionResponse)
 
@@ -138,6 +141,37 @@ func (o *onelogin) CreateSessionLoginTokenWithMFA(token string, params SessionLo
 	return sessionResponse, nil
 }
 
-func (o *onelogin) VerifyFactor(params VerifyFactorParams) {
+func (o *onelogin) VerifyFactor(token string, params VerifyFactorParams) (SessionResponse, error) {
+	var sessionResponse SessionResponse
+	client := &http.Client{}
 
+	b, err := json.Marshal(params)
+	if err != nil {
+		return sessionResponse, err
+	}
+	buf := bytes.NewBuffer(b)
+	req, err := http.NewRequest("POST", o.config.URL+"/api/1/login/verify_factor", buf)
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Authorization", "bearer:"+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return sessionResponse, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return sessionResponse, err
+	}
+
+	if resp.StatusCode == 400 {
+		return sessionResponse, fmt.Errorf("Statuscode 400 (bad request)")
+	}
+
+	err = json.Unmarshal(body, &sessionResponse)
+
+	if err != nil {
+		return sessionResponse, err
+	}
+
+	return sessionResponse, nil
 }
