@@ -55,7 +55,7 @@ type SessionResponseStatus struct {
 }
 type SessionResponseData struct {
 	Status       string                   `json:"status"`
-	User         SessionResponseUser      `json:"created_at"`
+	User         SessionResponseUser      `json:"user"`
 	ReturnToURL  string                   `json:"return_to_url"`
 	ExpiresAt    string                   `json:"expires_at"`
 	SessionToken string                   `json:"session_token"`
