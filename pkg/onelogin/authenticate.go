@@ -75,12 +75,12 @@ type SessionResponseUser struct {
 	Lastname  string `json:"lastname"`
 }
 
-func (o *onelogin) GenerateToken() (TokenResponse, error) {
-	var tokenResponse TokenResponse
+func (o *onelogin) GenerateToken() (TokenResponseData, error) {
+	var tokenResponse TokenResponseData
 	auth := "client_id:" + o.config.ClientID + ", client_secret:" + o.config.ClientSecret
 	client := &http.Client{}
 	buf := bytes.NewBuffer([]byte(`{"grant_type": "client_credentials"}`))
-	req, err := http.NewRequest("POST", o.config.URL+"/auth/oauth2/token", buf)
+	req, err := http.NewRequest("POST", o.config.URL+"/auth/oauth2/v2/token", buf)
 	if err != nil {
 		return tokenResponse, err
 	}
