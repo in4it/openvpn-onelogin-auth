@@ -45,7 +45,8 @@ func main() {
 	logger := loggo.GetLogger("openvpn-onelogin-auth")
 	loggo.ConfigureLoggers(`<root>=INFO`)
 
-	o := onelogin.New(readConfig())
+	config := readConfig()
+	o := onelogin.New(config)
 
 	password, passwordToken, err := getPasswordAndToken()
 	if err != nil {
@@ -58,13 +59,14 @@ func main() {
 		logger.Errorf("Error while generating token: %s\n", err)
 		os.Exit(1)
 	}
-	if len(token.Data) == 0 {
+	if len(token.AccessToken) == 0 {
 		logger.Errorf("No token returned\n")
 		os.Exit(1)
 	}
-	session, err := o.CreateSessionLoginTokenWithMFA(token.Data[0].AccessToken, onelogin.SessionLoginTokenParams{
+	session, err := o.CreateSessionLoginTokenWithMFA(token.AccessToken, onelogin.SessionLoginTokenParams{
 		UsernameOrEmail: os.Getenv("username"),
 		Password:        password,
+		Subdomain:       config.Subdomain,
 	})
 
 	if err != nil {
@@ -80,7 +82,7 @@ func main() {
 			logger.Errorf("No MFA devices returned\n")
 		}
 
-		session, err = o.VerifyFactor(token.Data[0].AccessToken, onelogin.VerifyFactorParams{
+		session, err = o.VerifyFactor(token.AccessToken, onelogin.VerifyFactorParams{
 			DeviceID:   strconv.FormatInt(session.Data[0].Devices[0].DeviceID, 10),
 			StateToken: session.Data[0].StateToken,
 			OptToken:   passwordToken,
