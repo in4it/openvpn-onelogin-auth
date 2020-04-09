@@ -31,12 +31,15 @@ func readConfig() onelogin.Config {
 	return config
 }
 
-func getPasswordAndToken() (string, string, error) {
+func getPasswordAndToken(isMFAEnabled bool) (string, string, error) {
 	password := os.Getenv("password")
-	if len(password) < 7 {
-		return "", "", fmt.Errorf("No OTP Supplied")
+	if isMFAEnabled {
+		if len(password) < 7 {
+			return "", "", fmt.Errorf("No OTP Supplied")
+		}
+		return password[0 : len(password)-6], password[len(password)-6:], nil
 	}
-	return password[0 : len(password)-6], password[len(password)-6:], nil
+	return password, "", nil
 }
 
 func main() {
@@ -47,7 +50,7 @@ func main() {
 
 	o := onelogin.New(readConfig())
 
-	password, passwordToken, err := getPasswordAndToken()
+	password, passwordToken, err := getPasswordAndToken(o.IsMFAEnabled())
 	if err != nil {
 		logger.Infof("Authentication failed: no password/otp supplied")
 		os.Exit(1)

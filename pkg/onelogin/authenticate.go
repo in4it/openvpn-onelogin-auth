@@ -175,3 +175,10 @@ func (o *onelogin) VerifyFactor(token string, params VerifyFactorParams) (Sessio
 
 	return sessionResponse, nil
 }
+
+func (o *onelogin) IsMFAEnabled() bool {
+	if o.config.MFA == true {
+		return true
+	}
+	return false
+}
