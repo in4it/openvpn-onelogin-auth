@@ -2,3 +2,4 @@ ONELOGIN_SUBDOMAIN="subdomain"
 ONELOGIN_URL="https://api.us.onelogin.com"
 ONELOGIN_CLIENT_ID="client id"
 ONELOGIN_CLIENT_SECRET="client secret"
+ONELOGIN_MFA=true
