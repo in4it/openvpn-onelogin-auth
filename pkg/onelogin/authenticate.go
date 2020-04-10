@@ -75,10 +75,13 @@ type SessionResponseUser struct {
 	Lastname  string `json:"lastname"`
 }
 
-func (o *onelogin) GenerateToken() (TokenResponse, error) {
+type HttpClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+func (o *onelogin) GenerateToken(client HttpClient) (TokenResponse, error) {
 	var tokenResponse TokenResponse
 	auth := "client_id:" + o.config.ClientID + ", client_secret:" + o.config.ClientSecret
-	client := &http.Client{}
 	buf := bytes.NewBuffer([]byte(`{"grant_type": "client_credentials"}`))
 	req, err := http.NewRequest("POST", o.config.URL+"/auth/oauth2/token", buf)
 	if err != nil {
@@ -104,9 +107,8 @@ func (o *onelogin) GenerateToken() (TokenResponse, error) {
 
 	return tokenResponse, err
 }
-func (o *onelogin) CreateSessionLoginTokenWithMFA(token string, params SessionLoginTokenParams) (SessionResponse, error) {
+func (o *onelogin) CreateSessionLoginTokenWithMFA(client HttpClient, token string, params SessionLoginTokenParams) (SessionResponse, error) {
 	var sessionResponse SessionResponse
-	client := &http.Client{}
 
 	params.Subdomain = o.config.Subdomain
 	b, err := json.Marshal(params)
@@ -141,9 +143,8 @@ func (o *onelogin) CreateSessionLoginTokenWithMFA(token string, params SessionLo
 	return sessionResponse, nil
 }
 
-func (o *onelogin) VerifyFactor(token string, params VerifyFactorParams) (SessionResponse, error) {
+func (o *onelogin) VerifyFactor(client HttpClient, token string, params VerifyFactorParams) (SessionResponse, error) {
 	var sessionResponse SessionResponse
-	client := &http.Client{}
 
 	b, err := json.Marshal(params)
 	if err != nil {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 
@@ -50,13 +51,15 @@ func main() {
 
 	o := onelogin.New(readConfig())
 
+	httpClient := &http.Client{}
+
 	password, passwordToken, err := getPasswordAndToken(o.IsMFAEnabled())
 	if err != nil {
 		logger.Infof("Authentication failed: no password/otp supplied")
 		os.Exit(1)
 	}
 
-	token, err := o.GenerateToken()
+	token, err := o.GenerateToken(httpClient)
 	if err != nil {
 		logger.Errorf("Error while generating token: %s\n", err)
 		os.Exit(1)
@@ -65,7 +68,7 @@ func main() {
 		logger.Errorf("No token returned\n")
 		os.Exit(1)
 	}
-	session, err := o.CreateSessionLoginTokenWithMFA(token.Data[0].AccessToken, onelogin.SessionLoginTokenParams{
+	session, err := o.CreateSessionLoginTokenWithMFA(httpClient, token.Data[0].AccessToken, onelogin.SessionLoginTokenParams{
 		UsernameOrEmail: os.Getenv("username"),
 		Password:        password,
 	})
@@ -83,7 +86,7 @@ func main() {
 			logger.Errorf("No MFA devices returned\n")
 		}
 
-		session, err = o.VerifyFactor(token.Data[0].AccessToken, onelogin.VerifyFactorParams{
+		session, err = o.VerifyFactor(httpClient, token.Data[0].AccessToken, onelogin.VerifyFactorParams{
 			DeviceID:   strconv.FormatInt(session.Data[0].Devices[0].DeviceID, 10),
 			StateToken: session.Data[0].StateToken,
 			OptToken:   passwordToken,
