@@ -67,7 +67,7 @@ func TestGenerateToken(t *testing.T) {
 	}
 
 }
-func TestCreateSessionLoginTokenWithMFA(t *testing.T) {
+func TestCreateSessionLoginToken(t *testing.T) {
 	o := New(Config{
 		Subdomain:    "test.com",
 		URL:          "https://www.test.com",
@@ -118,7 +118,7 @@ func TestCreateSessionLoginTokenWithMFA(t *testing.T) {
 		}, nil
 	}
 
-	session, err := o.CreateSessionLoginTokenWithMFA(client, "token", SessionLoginTokenParams{
+	success, err := o.CreateSessionLoginToken(client, "token", SessionLoginTokenParams{
 		UsernameOrEmail: "username",
 		Password:        "password",
 	})
@@ -126,8 +126,192 @@ func TestCreateSessionLoginTokenWithMFA(t *testing.T) {
 		t.Errorf("CreateSessionLoginTokenWithMFA error: %s", err)
 		return
 	}
-	if session.Status.Code != 200 || session.Status.Message != "Success" {
-		t.Errorf("CreateSessionLoginTokenWithMFA didn't respond with 200: %d", session.Status.Code)
+	if !success {
+		t.Errorf("CreateSessionLoginTokenWithMFA didn't respond with 200")
+		return
+	}
+}
+
+func TestCreateSessionLoginTokenWithMFA(t *testing.T) {
+	o := New(Config{
+		Subdomain:    "test.com",
+		URL:          "https://www.test.com",
+		ClientID:     "clientid",
+		ClientSecret: "secret",
+	})
+
+	bearerToken := "abc"
+
+	client := &ClientMock{}
+	client.GetDoFunc = func(req *http.Request) (*http.Response, error) {
+		// example from https://developers.onelogin.com/api-docs/1/login-page/create-session-login-token
+		json := ""
+		if req.URL.Path == "/api/1/login/auth" {
+			json = `{
+				"status": {
+					"type": "success",
+					"code": 200,
+					"message": "MFA is required for this user",
+					"error": false
+				},
+				"data": [
+					{
+						"user": {
+							"email": "jennifer.hasenfus@onelogin.com",
+							"username": "jhasenfus",
+							"firstname": "Jennifer",
+							"lastname": "Hasenfus",
+							"id": 88888888
+						},
+						"state_token": "xf4330878444597bd3933d4247cc1xxxxxxxxxxx",
+						"callback_url": "https://api.us.onelogin.com/api/1/login/verify_factor",
+						"devices": [
+							{
+								"device_type": "OneLogin OTP SMS",
+								"device_id": 111111
+							},
+							{
+								"device_type": "Google Authenticator",
+								"device_id": 444444
+							},
+							{
+								"device_type": "Yubico YubiKey",
+								"device_id": 555555
+							}
+						]
+					}
+				]
+			}`
+		} else if req.URL.Path == "/api/1/login/verify_factor" {
+			json = `{
+				"status": {
+					"type": "success",
+					"message": "Success",
+					"code": 200,
+					"error": false
+				},
+				"data": [
+					{
+						"status": "Authenticated",
+						"user": {
+							"username": "kinua",
+							"email": "kinua.wong@company.com",
+							"firstname": "Kinua",
+							"id": 88888888,
+							"lastname": "Wong"
+						},
+						"return_to_url": null,
+						"expires_at": "2016/01/07 05:56:21 +0000",
+						"session_token": "9x8869x31134x7906x6x54474x21x18xxx90857x"
+					}
+				]
+			}`
+		} else {
+			json = `{
+				"status": {
+					"code": 400,
+					"error": true,
+					"message": "Input JSON is not valid",
+					"type": "bad request"
+				}
+			}`
+		}
+
+		r := ioutil.NopCloser(bytes.NewReader([]byte(json)))
+
+		if req.Header.Get("Authorization") == "bearer: "+bearerToken {
+			return &http.Response{
+				StatusCode: 401,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(""))),
+			}, nil
+		}
+
+		return &http.Response{
+			StatusCode: 200,
+			Body:       r,
+		}, nil
+	}
+
+	inputUsername := "username"
+	inputPassword := "password123456"
+
+	success, err := o.CreateSessionLoginTokenWithMFA(client, "token", SessionLoginTokenParams{
+		UsernameOrEmail: inputUsername,
+		Password:        inputPassword,
+	})
+	if err != nil {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: %s", err)
+		return
+	}
+	if !success {
+		t.Errorf("CreateSessionLoginTokenWithMFA didn't respond with 200")
+		return
+	}
+}
+
+func TestMFA(t *testing.T) {
+
+	o := New(Config{
+		Subdomain:    "test.com",
+		URL:          "https://www.test.com",
+		ClientID:     "clientid",
+		ClientSecret: "secret",
+	})
+	devices := []SessionResponseDevices{
+		{
+			DeviceType: "OneLogin OTP SMS",
+			DeviceID:   111111,
+		},
+		{
+			DeviceType: "Google Authenticator",
+			DeviceID:   444444,
+		},
+		{
+			DeviceType: "Yubico YubiKey",
+			DeviceID:   555555,
+		},
+	}
+
+	inputPassword := "password123456"
+	inputPasswordYubikey := "passwordcccjgjgkhcbbirdrfdnlnghhfgrtnnlgedjlftrbdeut"
+
+	// test with google auth
+	password, passwordToken, passwordTokenType, err := o.GetPasswordAndToken(inputPassword)
+	if err != nil {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: %s", err)
+		return
+	}
+	if password != inputPassword[:len(inputPassword)-6] {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: password mismatch: %s vs %s", password, inputPassword[:len(inputPassword)-6])
+		return
+	}
+
+	if passwordToken != "123456" {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: token mismatch")
+		return
+	}
+	if deviceID, err := o.GetDeviceIDByTokenType(devices, passwordTokenType); err != nil || deviceID != "444444" {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: GetDeviceIDByTokenType: %s (deviceId: %s)", err, deviceID)
+		return
+	}
+
+	// test with yubikey
+	password, passwordToken, passwordTokenType, err = o.GetPasswordAndToken(inputPasswordYubikey)
+	if err != nil {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: %s", err)
+		return
+	}
+	if password != inputPassword[:len(inputPasswordYubikey)-44] {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: password mismatch: %s vs %s", password, inputPassword[:len(inputPasswordYubikey)-44])
+		return
+	}
+
+	if passwordToken != inputPasswordYubikey[len(inputPasswordYubikey)-44:] {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: token mismatch: %s vs %s", passwordToken, inputPasswordYubikey[len(inputPasswordYubikey)-44:])
+		return
+	}
+	if deviceID, err := o.GetDeviceIDByTokenType(devices, passwordTokenType); err != nil || deviceID != "555555" {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: GetDeviceIDByTokenType: %s (deviceId: %s)", err, deviceID)
 		return
 	}
 }
