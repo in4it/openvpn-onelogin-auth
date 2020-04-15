@@ -50,16 +50,15 @@ func main() {
 	}
 
 	if o.IsMFAEnabled() {
-		success, err = o.CreateSessionLoginToken(httpClient, accessToken, onelogin.SessionLoginTokenParams{
-			UsernameOrEmail: os.Getenv("username"),
-			Password:        os.Getenv("password"),
-		})
-	} else {
 		success, err = o.CreateSessionLoginTokenWithMFA(httpClient, accessToken, onelogin.SessionLoginTokenParams{
 			UsernameOrEmail: os.Getenv("username"),
 			Password:        os.Getenv("password"),
 		})
-
+	} else {
+		success, err = o.CreateSessionLoginToken(httpClient, accessToken, onelogin.SessionLoginTokenParams{
+			UsernameOrEmail: os.Getenv("username"),
+			Password:        os.Getenv("password"),
+		})
 	}
 	if err != nil {
 		logger.Errorf("Authentication failed for user: %s\n", err)
