@@ -52,17 +52,17 @@ func TestGenerateToken(t *testing.T) {
 		}, nil
 	}
 
-	tokenResponse, err := o.GenerateToken(client)
+	accessToken, refreshToken, err := o.GenerateToken(client)
 	if err != nil {
 		t.Errorf("GenerateToken error: %s", err)
 		return
 	}
-	if tokenResponse.Data[0].AccessToken != "xx508xx63817x752xx74004x30705xx92x58349x5x78f5xx34xxxxx51" {
-		t.Errorf("Got wrong access token: %s", tokenResponse.Data[0].AccessToken)
+	if accessToken != "xx508xx63817x752xx74004x30705xx92x58349x5x78f5xx34xxxxx51" {
+		t.Errorf("Got wrong access token: %s", accessToken)
 		return
 	}
-	if tokenResponse.Data[0].RefreshToken != "628x9x0xx447xx4x421x517x4x474x33x2065x4x1xx523xxxxx6x7x20" {
-		t.Errorf("Got wrong refresh token: %s", tokenResponse.Data[0].RefreshToken)
+	if refreshToken != "628x9x0xx447xx4x421x517x4x474x33x2065x4x1xx523xxxxx6x7x20" {
+		t.Errorf("Got wrong refresh token: %s", refreshToken)
 		return
 	}
 

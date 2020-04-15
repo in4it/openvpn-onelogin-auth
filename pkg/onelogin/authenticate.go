@@ -80,41 +80,45 @@ type HttpClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-func (o *onelogin) GenerateToken(client HttpClient) (TokenResponse, error) {
+func (o *onelogin) GenerateToken(client HttpClient) (string, string, error) {
 	var tokenResponse TokenResponse
 	auth := "client_id:" + o.config.ClientID + ", client_secret:" + o.config.ClientSecret
 	buf := bytes.NewBuffer([]byte(`{"grant_type": "client_credentials"}`))
 	req, err := http.NewRequest("POST", o.config.URL+"/auth/oauth2/token", buf)
 	if err != nil {
-		return tokenResponse, err
+		return "", "", err
 	}
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Authorization", auth)
 	resp, err := client.Do(req)
 	if err != nil {
-		return tokenResponse, err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return tokenResponse, err
+		return "", "", err
 	}
 
 	if resp.StatusCode != 200 {
-		return tokenResponse, fmt.Errorf("Statuscode was not 200 (is %d)", resp.StatusCode)
+		return "", "", fmt.Errorf("Statuscode was not 200 (is %d)", resp.StatusCode)
 	}
 
 	err = json.Unmarshal(body, &tokenResponse)
 
-	return tokenResponse, err
+	if len(tokenResponse.Data) == 0 {
+		return "", "", fmt.Errorf("no token returned")
+	}
+
+	return tokenResponse.Data[0].AccessToken, tokenResponse.Data[0].RefreshToken, err
 }
-func (o *onelogin) CreateSessionLoginToken(client HttpClient, token string, params SessionLoginTokenParams) (bool, error) {
+func (o *onelogin) createSessionLoginToken(client HttpClient, token string, params SessionLoginTokenParams) (SessionResponse, error) {
 	var sessionResponse SessionResponse
 
 	params.Subdomain = o.config.Subdomain
 	b, err := json.Marshal(params)
 	if err != nil {
-		return false, err
+		return sessionResponse, err
 	}
 	buf := bytes.NewBuffer(b)
 	req, err := http.NewRequest("POST", o.config.URL+"/api/1/login/auth", buf)
@@ -122,21 +126,28 @@ func (o *onelogin) CreateSessionLoginToken(client HttpClient, token string, para
 	req.Header.Add("Authorization", "bearer:"+token)
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, err
+		return sessionResponse, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		return false, err
+		return sessionResponse, err
 	}
 
 	if resp.StatusCode == 400 {
-		return false, fmt.Errorf("Statuscode 400 (bad request)")
+		return sessionResponse, fmt.Errorf("Statuscode 400 (bad request)")
 	}
 
 	err = json.Unmarshal(body, &sessionResponse)
 
+	if err != nil {
+		return sessionResponse, err
+	}
+	return sessionResponse, nil
+}
+func (o *onelogin) CreateSessionLoginToken(client HttpClient, token string, params SessionLoginTokenParams) (bool, error) {
+	sessionResponse, err := o.createSessionLoginToken(client, token, params)
 	if err != nil {
 		return false, err
 	}
@@ -153,40 +164,13 @@ func (o *onelogin) CreateSessionLoginToken(client HttpClient, token string, para
 }
 
 func (o *onelogin) CreateSessionLoginTokenWithMFA(client HttpClient, token string, params SessionLoginTokenParams) (bool, error) {
-	var sessionResponse SessionResponse
-
 	password, passwordToken, passwordTokenType, err := o.GetPasswordAndToken(params.Password)
 	if err != nil {
 		return false, fmt.Errorf("Authentication failed: no password/otp supplied")
 	}
 	params.Password = password
 
-	params.Subdomain = o.config.Subdomain
-	b, err := json.Marshal(params)
-	if err != nil {
-		return false, err
-	}
-	buf := bytes.NewBuffer(b)
-	req, err := http.NewRequest("POST", o.config.URL+"/api/1/login/auth", buf)
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Authorization", "bearer:"+token)
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-
-	if err != nil {
-		return false, err
-	}
-
-	if resp.StatusCode == 400 {
-		return false, fmt.Errorf("Statuscode 400 (bad request)")
-	}
-
-	err = json.Unmarshal(body, &sessionResponse)
-
+	sessionResponse, err := o.createSessionLoginToken(client, token, params)
 	if err != nil {
 		return false, err
 	}
@@ -196,10 +180,10 @@ func (o *onelogin) CreateSessionLoginTokenWithMFA(client HttpClient, token strin
 		return false, fmt.Errorf("MFA is enabled, but user doesn't have MFA setup")
 	}
 	if len(sessionResponse.Data) == 0 {
-		return false, fmt.Errorf("No data returned\n")
+		return false, fmt.Errorf("no data returned")
 	}
 	if len(sessionResponse.Data[0].Devices) == 0 {
-		return false, fmt.Errorf("No MFA devices returned\n")
+		return false, fmt.Errorf("no MFA devices returned")
 	}
 
 	deviceID, err := o.GetDeviceIDByTokenType(sessionResponse.Data[0].Devices, passwordTokenType)

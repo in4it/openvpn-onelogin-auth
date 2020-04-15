@@ -43,23 +43,19 @@ func main() {
 
 	httpClient := &http.Client{}
 
-	token, err := o.GenerateToken(httpClient)
+	accessToken, _, err := o.GenerateToken(httpClient)
 	if err != nil {
 		logger.Errorf("Error while generating token: %s\n", err)
 		os.Exit(1)
 	}
-	if len(token.Data) == 0 {
-		logger.Errorf("No token returned\n")
-		os.Exit(1)
-	}
 
 	if o.IsMFAEnabled() {
-		success, err = o.CreateSessionLoginToken(httpClient, token.Data[0].AccessToken, onelogin.SessionLoginTokenParams{
+		success, err = o.CreateSessionLoginToken(httpClient, accessToken, onelogin.SessionLoginTokenParams{
 			UsernameOrEmail: os.Getenv("username"),
 			Password:        os.Getenv("password"),
 		})
 	} else {
-		success, err = o.CreateSessionLoginTokenWithMFA(httpClient, token.Data[0].AccessToken, onelogin.SessionLoginTokenParams{
+		success, err = o.CreateSessionLoginTokenWithMFA(httpClient, accessToken, onelogin.SessionLoginTokenParams{
 			UsernameOrEmail: os.Getenv("username"),
 			Password:        os.Getenv("password"),
 		})
