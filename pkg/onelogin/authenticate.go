@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/juju/loggo"
 )
@@ -248,22 +249,24 @@ func (o *onelogin) IsMFAEnabled() bool {
 	return false
 }
 
-func (o *onelogin) GetPasswordAndToken(password string) (string, string, string, error) {
+func (o *onelogin) GetPasswordAndToken(password string) (string, string, []string, error) {
 	// does it have a yubikey token
 	if hasToken, retToken := hasYubiKeyToken(password); hasToken {
-		return password[:len(password)-len(retToken)], retToken, "Yubico YubiKey", nil
+		return password[:len(password)-len(retToken)], retToken, []string{"Yubico YubiKey"}, nil
 	}
 	if len(password) < 7 {
-		return "", "", "", fmt.Errorf("No OTP Supplied")
+		return "", "", []string{}, fmt.Errorf("No OTP Supplied")
 	}
-	return password[0 : len(password)-6], password[len(password)-6:], "Google Authenticator", nil
+	return password[0 : len(password)-6], password[len(password)-6:], []string{"Google Authenticator", "OneLogin Protect"}, nil
 }
 
-func (o *onelogin) GetDeviceIDByTokenType(input []SessionResponseDevices, tokenType string) (string, error) {
+func (o *onelogin) GetDeviceIDByTokenType(input []SessionResponseDevices, tokenTypes []string) (string, error) {
 	for _, v := range input {
-		if v.DeviceType == tokenType {
-			return strconv.FormatInt(v.DeviceID, 10), nil
+		for _, tokenType := range tokenTypes {
+			if v.DeviceType == tokenType {
+				return strconv.FormatInt(v.DeviceID, 10), nil
+			}
 		}
 	}
-	return "", fmt.Errorf("couldn't find device type '%s' in onelogin's enrolled devices for this user", tokenType)
+	return "", fmt.Errorf("couldn't find device type '%s' in onelogin's enrolled devices for this user", strings.Join(tokenTypes, ","))
 }

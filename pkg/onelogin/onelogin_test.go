@@ -2,6 +2,7 @@ package onelogin
 
 import (
 	"bytes"
+	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -145,9 +146,27 @@ func TestCreateSessionLoginTokenWithMFA(t *testing.T) {
 	client := &ClientMock{}
 	client.GetDoFunc = func(req *http.Request) (*http.Response, error) {
 		// example from https://developers.onelogin.com/api-docs/1/login-page/create-session-login-token
-		json := ""
+		jsonResponse := ""
+		errorResponse := &http.Response{
+			StatusCode: 400,
+			Body: ioutil.NopCloser(bytes.NewReader([]byte(`{
+				"status": {
+					"code": 400,
+					"error": true,
+					"message": "Input JSON is not valid",
+					"type": "bad request"
+				}
+			}
+			`))),
+		}
+		if req.Header.Get("Authorization") == "bearer: "+bearerToken {
+			return &http.Response{
+				StatusCode: 401,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(""))),
+			}, nil
+		}
 		if req.URL.Path == "/api/1/login/auth" {
-			json = `{
+			jsonResponse = `{
 				"status": {
 					"type": "success",
 					"code": 200,
@@ -167,12 +186,12 @@ func TestCreateSessionLoginTokenWithMFA(t *testing.T) {
 						"callback_url": "https://api.us.onelogin.com/api/1/login/verify_factor",
 						"devices": [
 							{
-								"device_type": "OneLogin OTP SMS",
-								"device_id": 111111
-							},
-							{
 								"device_type": "Google Authenticator",
 								"device_id": 444444
+							},
+							{
+								"device_type": "OneLogin Protect",
+								"device_id": 111111
 							},
 							{
 								"device_type": "Yubico YubiKey",
@@ -182,8 +201,40 @@ func TestCreateSessionLoginTokenWithMFA(t *testing.T) {
 					}
 				]
 			}`
-		} else if req.URL.Path == "/api/1/login/verify_factor" {
-			json = `{
+			return &http.Response{
+				StatusCode: 200,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse))),
+			}, nil
+		}
+		if req.URL.Path == "/api/1/login/verify_factor" {
+			defer req.Body.Close()
+			body, err := ioutil.ReadAll(req.Body)
+			if err != nil {
+				return errorResponse, err
+			}
+			var params VerifyFactorParams
+
+			err = json.Unmarshal(body, &params)
+			if err != nil {
+				return errorResponse, err
+			}
+
+			if params.DeviceID != "444444" {
+				return &http.Response{
+					StatusCode: 400,
+					Body: ioutil.NopCloser(bytes.NewReader([]byte(`{
+						"status": {
+							"code": 400,
+							"error": true,
+							"message": "Test failed: device id is not expected id",
+							"type": "bad request"
+						}
+					}
+					`))),
+				}, nil
+			}
+
+			jsonResponse = `{
 				"status": {
 					"type": "success",
 					"message": "Success",
@@ -206,30 +257,13 @@ func TestCreateSessionLoginTokenWithMFA(t *testing.T) {
 					}
 				]
 			}`
-		} else {
-			json = `{
-				"status": {
-					"code": 400,
-					"error": true,
-					"message": "Input JSON is not valid",
-					"type": "bad request"
-				}
-			}`
-		}
-
-		r := ioutil.NopCloser(bytes.NewReader([]byte(json)))
-
-		if req.Header.Get("Authorization") == "bearer: "+bearerToken {
 			return &http.Response{
-				StatusCode: 401,
-				Body:       ioutil.NopCloser(bytes.NewReader([]byte(""))),
+				StatusCode: 200,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse))),
 			}, nil
 		}
-
-		return &http.Response{
-			StatusCode: 200,
-			Body:       r,
-		}, nil
+		// no match on URI
+		return errorResponse, nil
 	}
 
 	inputUsername := "username"
