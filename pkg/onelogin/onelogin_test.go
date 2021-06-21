@@ -415,3 +415,166 @@ func TestVerifyFactor(t *testing.T) {
 		return
 	}
 }
+func TestCreateSessionLoginTokenWithOneloginProtect(t *testing.T) {
+	o := New(Config{
+		Subdomain:    "test.com",
+		URL:          "https://www.test.com",
+		ClientID:     "clientid",
+		ClientSecret: "secret",
+	})
+
+	bearerToken := "abc"
+
+	client := &ClientMock{}
+	client.GetDoFunc = func(req *http.Request) (*http.Response, error) {
+		// example from https://developers.onelogin.com/api-docs/1/login-page/create-session-login-token
+		jsonResponse := ""
+		errorResponse := &http.Response{
+			StatusCode: 400,
+			Body: ioutil.NopCloser(bytes.NewReader([]byte(`{
+				"status": {
+					"code": 400,
+					"error": true,
+					"message": "Input JSON is not valid",
+					"type": "bad request"
+				}
+			}
+			`))),
+		}
+		if req.Header.Get("Authorization") == "bearer: "+bearerToken {
+			return &http.Response{
+				StatusCode: 401,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(""))),
+			}, nil
+		}
+		if req.URL.Path == "/api/1/login/auth" {
+			jsonResponse = `{
+				"status": {
+					"type": "success",
+					"code": 200,
+					"message": "MFA is required for this user",
+					"error": false
+				},
+				"data": [
+					{
+						"user": {
+							"email": "jennifer.hasenfus@onelogin.com",
+							"username": "jhasenfus",
+							"firstname": "Jennifer",
+							"lastname": "Hasenfus",
+							"id": 88888888
+						},
+						"state_token": "xf4330878444597bd3933d4247cc1xxxxxxxxxxx",
+						"callback_url": "https://api.us.onelogin.com/api/1/login/verify_factor",
+						"devices": [
+							{
+								"device_type": "Google Authenticator",
+								"device_id": 444444
+							},
+							{
+								"device_type": "OneLogin Protect",
+								"device_id": 111111
+							},
+							{
+								"device_type": "Yubico YubiKey",
+								"device_id": 555555
+							}
+						]
+					}
+				]
+			}`
+			return &http.Response{
+				StatusCode: 200,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse))),
+			}, nil
+		}
+		if req.URL.Path == "/api/1/login/verify_factor" {
+			defer req.Body.Close()
+			body, err := ioutil.ReadAll(req.Body)
+			if err != nil {
+				return errorResponse, err
+			}
+			var params VerifyFactorParams
+
+			err = json.Unmarshal(body, &params)
+			if err != nil {
+				return errorResponse, err
+			}
+
+			if params.DeviceID != "111111" {
+				return &http.Response{
+					StatusCode: 400,
+					Body: ioutil.NopCloser(bytes.NewReader([]byte(`{
+						"status": {
+							"code": 400,
+							"error": true,
+							"message": "Test failed: device id is not expected id",
+							"type": "bad request"
+						}
+					}
+					`))),
+				}, nil
+			}
+
+			if client.VerifyCount > 0 {
+				jsonResponse = `{
+					"status": {
+						"type": "success",
+						"code": 200,
+						"message": "Success",
+						"error": false
+					},
+					"data": [
+						{
+							"return_to_url": null,
+							"user": {
+								"username": "jhasenfus",
+								"email": "jennifer.hasenfus@onelogin.com",
+								"firstname": "Jennifer",
+								"lastname": "Hasegawa",
+								"id": 88888888
+							},
+							"status": "Authenticated",
+							"session_token": "xxxxxxxxx8a4c07773a5454f946",
+							"expires_at": "2016/01/26 02:21:47 +0000"
+						}
+					]
+				}`
+			} else {
+				jsonResponse = `{
+					"status": {
+						"type": "success",
+						"code": 200,
+						"message": "Authentication pending on OL Protect",
+						"error": false
+					}
+				}`
+			}
+
+			client.VerifyCount++
+
+			return &http.Response{
+				StatusCode: 200,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse))),
+			}, nil
+		}
+		// no match on URI
+		return errorResponse, nil
+	}
+
+	inputUsername := "username"
+	inputPassword := "password"
+
+	success, err := o.CreateSessionLoginTokenWithMFA(client, "token", SessionLoginTokenParams{
+		UsernameOrEmail: inputUsername,
+		Password:        inputPassword,
+	})
+	if err != nil {
+		t.Errorf("CreateSessionLoginTokenWithMFA error: %s", err)
+		return
+	}
+	if !success {
+		t.Errorf("CreateSessionLoginTokenWithMFA didn't respond with 200")
+		return
+	}
+}
