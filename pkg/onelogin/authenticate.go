@@ -193,11 +193,21 @@ func (o *onelogin) CreateSessionLoginTokenWithMFA(client HttpClient, token strin
 		return false, fmt.Errorf("function GetDeviceIdByTokenType error: %s", err)
 	}
 
-	verifyFactorResponse, err := o.VerifyFactor(client, token, VerifyFactorParams{
-		DeviceID:   deviceID,
-		StateToken: sessionResponse.Data[0].StateToken,
-		OptToken:   passwordToken,
-	})
+	verifyParams := VerifyFactorParams{}
+	if passwordToken != "" {
+		verifyParams = VerifyFactorParams{
+			DeviceID:   deviceID,
+			StateToken: sessionResponse.Data[0].StateToken,
+			OptToken:   passwordToken,
+		}
+	} else {
+		verifyParams = VerifyFactorParams{
+			DeviceID:   deviceID,
+			StateToken: sessionResponse.Data[0].StateToken,
+		}
+	}
+
+	verifyFactorResponse, err := o.VerifyFactor(client, token, verifyParams)
 	if err != nil {
 		return false, fmt.Errorf("function Error while creating session during VerifyFactor: %s", err)
 	}
