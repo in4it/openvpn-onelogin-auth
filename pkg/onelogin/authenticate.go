@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/juju/loggo"
 )
@@ -205,7 +206,31 @@ func (o *onelogin) CreateSessionLoginTokenWithMFA(client HttpClient, token strin
 		// MFA auth succeeded
 		return true, nil
 	}
-	return false, fmt.Errorf("Authentication failed: %d - %s", verifyFactorResponse.Status.Code, verifyFactorResponse.Status.Message)
+	if verifyFactorResponse.Status.Code == 200 && strings.Contains(verifyFactorResponse.Status.Message, "Authentication pending") {
+		// authentication pending - POLL
+		for i := 0; i < 10; i++ {
+			if i < 5 {
+				time.Sleep(2 * time.Second)
+			} else {
+				time.Sleep(4 * time.Second)
+			}
+			verifyFactorResponse, err = o.VerifyFactor(client, token, VerifyFactorParams{
+				DeviceID:    deviceID,
+				StateToken:  sessionResponse.Data[0].StateToken,
+				DoNotNotify: true, // don't notify again to verify notification response
+			})
+			if err != nil {
+				return false, fmt.Errorf("function Error while polling VerifyFactor: %s", err)
+			}
+			if verifyFactorResponse.Status.Code == 200 && verifyFactorResponse.Status.Message == "Success" {
+				// MFA auth succeeded
+				return true, nil
+			}
+		}
+		return false, fmt.Errorf("authentication failed: timeout while polling VerifyFactor (code: %d, Message: %s)", verifyFactorResponse.Status.Code, verifyFactorResponse.Status.Message)
+	}
+
+	return false, fmt.Errorf("authentication failed: %d - %s", verifyFactorResponse.Status.Code, verifyFactorResponse.Status.Message)
 }
 
 func (o *onelogin) VerifyFactor(client HttpClient, token string, params VerifyFactorParams) (SessionResponse, error) {
@@ -250,14 +275,21 @@ func (o *onelogin) IsMFAEnabled() bool {
 }
 
 func (o *onelogin) GetPasswordAndToken(password string) (string, string, []string, error) {
+	if len(password) == 0 {
+		return "", "", []string{}, fmt.Errorf("no Password Supplied")
+	}
 	// does it have a yubikey token
 	if hasToken, retToken := hasYubiKeyToken(password); hasToken {
 		return password[:len(password)-len(retToken)], retToken, []string{"Yubico YubiKey"}, nil
 	}
-	if len(password) < 7 {
-		return "", "", []string{}, fmt.Errorf("No OTP Supplied")
+
+	passwordWithoutToken, possibleToken, hasToken := hasToken(password)
+	if hasToken {
+		return passwordWithoutToken, possibleToken, []string{"Google Authenticator", "OneLogin Protect"}, nil
 	}
-	return password[0 : len(password)-6], password[len(password)-6:], []string{"Google Authenticator", "OneLogin Protect"}, nil
+
+	// No token found, Onelogin push only possibility
+	return password, "", []string{"OneLogin Protect"}, nil
 }
 
 func (o *onelogin) GetDeviceIDByTokenType(input []SessionResponseDevices, tokenTypes []string) (string, error) {
