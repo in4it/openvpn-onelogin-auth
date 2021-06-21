@@ -545,7 +545,7 @@ func TestCreateSessionLoginTokenWithOneloginProtect(t *testing.T) {
 					"status": {
 						"type": "success",
 						"code": 200,
-						"message": "Push sent to your mobile device. Authentication pending.",
+						"message": "Authentication pending on OL Protect",
 						"error": false
 					}
 				}`
